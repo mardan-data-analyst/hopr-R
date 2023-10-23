@@ -1,0 +1,248 @@
+# Slot machine - All objects and functions - not vectorized
+
+# get_symbols function
+get_symbols <- function() {
+  wheel <- c("DD", "7", "BBB", "BB", "B", "C", "0")
+  sample(wheel, size = 3, replace = TRUE,
+         prob = c(0.03, 0.03, 0.06, 0.1, 0.25, 0.01, 0.52))
+}
+
+score <- function(symbols) {
+  
+  diamonds <- sum(symbols == "DD")
+  cherries <- sum(symbols == "C")
+  
+  # identify case
+  # since diamonds are wild, only non diamonds 
+  # matter for three of a kind and all bars
+  slots <- symbols[symbols != "DD"]
+  same <- length(unique(slots)) == 1
+  bars <- slots %in% c("B", "BB", "BBB")
+  
+  # assign prize
+  if (diamonds == 3) {
+    prize <- 100
+  } else if (same) {
+    payouts <- c("7" = 80, "BBB" = 40, "BB" = 25,
+                 "B" = 10, "C" = 10, "0" = 0)
+    prize <- unname(payouts[slots[1]])
+  } else if (all(bars)) {
+    prize <- 5
+  } else if (cherries > 0) {
+    # diamonds count as cherries
+    # so long as there is one real cherry
+    prize <- c(0, 2, 5)[cherries + diamonds + 1]
+  } else {
+    prize <- 0
+  }
+  
+  # double for each diamond
+  prize * 2^diamonds
+}
+
+# slot display function
+slot_display <- function(prize) {
+  
+  # extract symbols
+  symbols <- attr(prize, "symbols")
+  
+  # collapse symbols into single string
+  symbols <- paste(symbols, collapse = " ")
+  
+  # combine symbol with prize as a character string
+  # \n is special escape sequence for a new line (i.e. return or enter)
+  string <- paste(symbols, prize, sep = "\n$")
+  
+  # display character string in console without quotes
+  cat(string)
+}
+
+# print method for the slots class
+print.slots <- function(x, ...) {
+  slot_display(x)
+}
+
+# play function
+play <- function() {
+  # step 1: generate symbols
+  symbols <- get_symbols()
+  
+  # step 2: generate a prize, set its attributes and set class
+  structure(score(symbols), symbols = symbols, class = "slots")
+}
+
+
+# If you played the slot machine many, many times, 
+# the average prize over all of the plays would be a good estimate of the true payout rate.
+# This method of estimation is based on the law of large numbers 
+# and is similar to many statistical simulations.
+winnings <- vector(length = 1000000)
+for (i in 1:1000000) {
+  winnings[i] <- play()
+}
+
+mean(winnings)
+
+system.time(for (i in 1:1000000) {
+  winnings[i] <- play()
+})
+
+
+# Slot machine - All objects and functions - vectorized
+
+# get_many_symbols function - generates n slot combinations and return them as an n x 3 matrix
+get_many_symbols <- function(n) {
+  wheel <- c("DD", "7", "BBB", "BB", "B", "C", "0")
+  vec <- sample(wheel, size = 3 * n, replace = TRUE,
+         prob = c(0.03, 0.03, 0.06, 0.1, 0.25, 0.01, 0.52))
+  matrix(vec, ncol = 3)
+}
+
+get_many_symbols(5)
+
+
+score <- function(symbols) {
+  
+  diamonds <- sum(symbols == "DD")
+  cherries <- sum(symbols == "C")
+  
+  # identify case
+  # since diamonds are wild, only non diamonds 
+  # matter for three of a kind and all bars
+  slots <- symbols[symbols != "DD"]
+  same <- length(unique(slots)) == 1
+  bars <- slots %in% c("B", "BB", "BBB")
+  
+  # assign prize
+  if (diamonds == 3) {
+    prize <- 100
+  } else if (same) {
+    payouts <- c("7" = 80, "BBB" = 40, "BB" = 25,
+                 "B" = 10, "C" = 10, "0" = 0)
+    prize <- unname(payouts[slots[1]])
+  } else if (all(bars)) {
+    prize <- 5
+  } else if (cherries > 0) {
+    # diamonds count as cherries
+    # so long as there is one real cherry
+    prize <- c(0, 2, 5)[cherries + diamonds + 1]
+  } else {
+    prize <- 0
+  }
+  
+  # double for each diamond
+  prize * 2^diamonds
+}
+
+# slot display function
+slot_display <- function(prize) {
+  
+  # extract symbols
+  symbols <- attr(prize, "symbols")
+  
+  # collapse symbols into single string
+  symbols <- paste(symbols, collapse = " ")
+  
+  # combine symbol with prize as a character string
+  # \n is special escape sequence for a new line (i.e. return or enter)
+  string <- paste(symbols, prize, sep = "\n$")
+  
+  # display character string in console without quotes
+  cat(string)
+}
+
+# print method for the slots class
+print.slots <- function(x, ...) {
+  slot_display(x)
+}
+
+# play function
+play_many <- function(n) {
+  # step 1: generate symbols and store them in a matrix
+  symb_mat <- get_many_symbols(n = n)
+  
+  # step 2: convert matrix to data frame and get prize
+  data.frame(w1 = symb_mat[, 1], w2 = symb_mat[, 2], w3 = symb_mat[, 3],
+             prize = score_many(symb_mat))
+}
+
+
+# a concrete example to convert score function to the vectorized version score_many
+symbols.concrete <- matrix(
+  c("DD", "DD", "DD", 
+    "C", "DD", "0", 
+    "B", "B", "B", 
+    "B", "BB", "BBB", 
+    "C", "C", "0", 
+    "7", "DD", "DD"), nrow = 6, byrow = TRUE)
+
+
+# vectorized score function
+score_many <- function(symbols) {
+  
+  # Step 1: Assign base prize based on cherries and diamonds
+  
+  ## Count the number of cherries and diamonds in each combination
+  cherries <- rowSums(symbols == "C")
+  diamonds <- rowSums(symbols == "DD")
+  
+  ## Wild diamonds count as cherries
+  prize <- c(0, 2, 5)[cherries + diamonds + 1]
+  
+  ## ...but not if there are zero real cherries
+  ### (cherries is coerced to FALSE where cherries == 0)
+  prize[!cherries] <- 0
+  
+  # Step 2: Change prize for combinations that contain three of a kind
+  same <- symbols[, 1] == symbols[, 2] & 
+    symbols[, 2] == symbols[, 3]
+  payoffs <- c("DD" = 100, "7" = 80, "BBB" = 40,
+               "BB" = 25, "B" = 10, "C" = 10, "0" = 0)
+  prize[same] <- payoffs[symbols[same, 1]]
+  
+  # Step 3: Change prize for combinations that contain all bars
+  bars <- symbols == "B" | symbols == "BB" | symbols == "BBB"
+  all_bars <- bars[, 1] & bars[, 2] & bars[, 3] & !same
+  prize[all_bars]  <- 5
+  
+  # Step 4: Handle wilds
+  
+  ## combos with two diamonds
+  two_wilds <- diamonds == 2
+  
+
+  ### Identify the non wild symbol
+  one <- two_wilds & symbols[, 1] != symbols[, 2] &
+    symbols[, 2] == symbols[, 3]
+  two <- two_wilds & symbols[, 1] != symbols[, 2] &
+    symbols[, 1] == symbols[, 3]
+  three <- two_wilds & symbols[, 1] == symbols[, 2] &
+    symbols[, 2] != symbols[, 3]
+  
+  ### Treat as three of a kind
+  prize[one] <- payoffs[symbols[one, 1]]
+  prize[two] <- payoffs[symbols[two, 2]]
+  prize[three] <- payoffs[symbols[three, 3]]
+  
+  ## combos with one wild
+  one_wild <- diamonds == 1
+  
+  ### Treat as all bars (if appropriate)
+  wild_bars <- one_wild & (rowSums(bars) == 2)
+  prize[wild_bars] <- 5
+  
+  ### Treat as three of a kind (if appropriate)
+  one <- one_wild & symbols[, 1] == symbols[, 2]
+  two <- one_wild & symbols[, 2] == symbols[, 3]
+  three <- one_wild & symbols[, 3] == symbols[, 1]
+  prize[one] <- payoffs[symbols[one, 1]]
+  prize[two] <- payoffs[symbols[two, 2]]
+  prize[three] <- payoffs[symbols[three, 3]]
+  
+  # Step 5: Double prize for every diamond in combo
+  unname(prize * 2^diamonds)
+}
+
+system.time(play_many(10000000))
+
+
